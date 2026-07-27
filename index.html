@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SUPER CONVERTER // MK-V TRUE ENCODER ENGINE</title>
+    <title>SUPER CONVERTER // MK-VI ASYNC PROGRESS ENGINE</title>
     <!-- Authentic LAME.js MPEG Layer III Mathematical Codec Engine -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
     <style>
@@ -34,8 +34,8 @@
 
     <script>
         /**
-         * PURE CANVAS AUDIO ENGINE // MK-V
-         * True MP3 (LAME.js) // True WAV/WEBM/OGG // Dynamic Industrial Matrix // 90° Sharp UI
+         * PURE CANVAS AUDIO ENGINE // MK-VI
+         * Async Non-Blocking Codecs // Live Progress Gauge // Dynamic Matrix // 90° Sharp UI
          */
         const canvas = document.getElementById('stage');
         const ctx = canvas.getContext('2d');
@@ -47,6 +47,11 @@
         let activeSource = null;
         let isPlaying = false;
         let playbackStartTime = 0;
+
+        // Async Conversion State
+        let isConverting = false;
+        let conversionProgress = 0.0; // 0.0 to 1.0
+        let conversionStartTime = 0;
 
         // UI & System State
         let mouseX = 0;
@@ -67,7 +72,7 @@
             { id: 'ogg', label: 'OGG // VORBIS / OPUS STREAM CONTAINER' }
         ];
 
-        // --- DYNAMIC BACKGROUND ENGINE (MK-V) ---
+        // --- DYNAMIC BACKGROUND ENGINE (MK-VI) ---
         const GRID_SIZE = 40;
         const traces = [];
         const pulseTiles = [];
@@ -224,6 +229,7 @@
         };
 
         canvas.addEventListener('mousemove', (e) => {
+            if (isConverting) { canvas.style.cursor = 'wait'; return; }
             const rect = canvas.getBoundingClientRect();
             mouseX = e.clientX - rect.left;
             mouseY = e.clientY - rect.top;
@@ -241,6 +247,8 @@
         });
 
         canvas.addEventListener('mousedown', () => {
+            if (isConverting) return; // Lock UI during active conversion
+
             if (dropdownOpen) {
                 let optionClicked = false;
                 formatOptions.forEach((opt, idx) => {
@@ -270,10 +278,10 @@
         window.addEventListener('dragover', (e) => e.preventDefault());
         window.addEventListener('drop', (e) => {
             e.preventDefault();
-            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+            if (e.dataTransfer.files.length && !isConverting) handleFile(e.dataTransfer.files[0]);
         });
         fileBridge.addEventListener('change', (e) => {
-            if (e.target.files.length) handleFile(e.target.files[0]);
+            if (e.target.files.length && !isConverting) handleFile(e.target.files[0]);
         });
 
         async function handleFile(file) {
@@ -320,23 +328,18 @@
             }
         }
 
-        // --- AUTHENTIC AUDIO ENVERSION EXECUTION ---
+        // --- ASYNC NON-BLOCKING CONVERSION ROUTING ---
         function executeConversion() {
-            stopPlayback(); // Halt preview to free up processing resources
+            stopPlayback();
+            isConverting = true;
+            conversionProgress = 0.0;
+            conversionStartTime = audioCtx.currentTime;
             
             if (selectedFormat === 'wav') {
-                statusText = 'RENDERING UNCOMPRESSED PCM WAV STREAM...';
-                setTimeout(() => {
-                    const wavBlob = bufferToWav(decodedBuffer);
-                    triggerDownload(wavBlob, 'converted_output.wav');
-                }, 50);
+                encodeWavAsync(decodedBuffer);
             } 
             else if (selectedFormat === 'mp3') {
-                statusText = 'ENCODING TRUE MPEG LAYER III MP3 VIA LAME ENGINE...';
-                setTimeout(() => {
-                    const mp3Blob = bufferToMp3(decodedBuffer);
-                    if (mp3Blob) triggerDownload(mp3Blob, 'converted_output.mp3');
-                }, 50);
+                encodeMp3Async(decodedBuffer);
             } 
             else if (selectedFormat === 'webm' || selectedFormat === 'ogg') {
                 encodeViaMediaRecorder(decodedBuffer, selectedFormat);
@@ -354,12 +357,187 @@
             setTimeout(() => {
                 document.body.removeChild(a);
                 window.URL.revokeObjectURL(url);
+                isConverting = false;
+                conversionProgress = 0.0;
                 statusText = `EXPORT COMPLETE: GENUINE ${filename.toUpperCase()} GENERATED.`;
             }, 100);
         }
 
+        // --- ASYNC NON-BLOCKING MP3 ENCODER (LAME.JS) ---
+        function encodeMp3Async(buffer) {
+            if (typeof lamejs === 'undefined') {
+                statusText = "ERROR: LAME.JS CODEC UNREACHABLE.";
+                isConverting = false;
+                return;
+            }
+            const channels = buffer.numberOfChannels;
+            const sampleRate = buffer.sampleRate;
+            const kbps = 192;
+            const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, kbps);
+            const sampleBlockSize = 1152;
+            const mp3Data = [];
+
+            const left = buffer.getChannelData(0);
+            const right = channels > 1 ? buffer.getChannelData(1) : left;
+            const totalSamples = left.length;
+
+            const leftPcm = new Int16Array(totalSamples);
+            const rightPcm = new Int16Array(totalSamples);
+
+            // Fast PCM Float-to-Int16 downsample
+            for (let i = 0; i < totalSamples; i++) {
+                let sL = Math.max(-1, Math.min(1, left[i]));
+                leftPcm[i] = sL < 0 ? sL * 0x8000 : sL * 0x7FFF;
+                if (channels > 1) {
+                    let sR = Math.max(-1, Math.min(1, right[i]));
+                    rightPcm[i] = sR < 0 ? sR * 0x8000 : sR * 0x7FFF;
+                }
+            }
+
+            let currentIndex = 0;
+            // Process ~46,080 samples per tick to keep UI running smoothly at 60 FPS
+            const chunkSize = sampleBlockSize * 40; 
+
+            function processChunk() {
+                const end = Math.min(currentIndex + chunkSize, totalSamples);
+                for (let i = currentIndex; i < end; i += sampleBlockSize) {
+                    const subEnd = Math.min(i + sampleBlockSize, totalSamples);
+                    const leftChunk = leftPcm.subarray(i, subEnd);
+                    const rightChunk = channels > 1 ? rightPcm.subarray(i, subEnd) : leftChunk;
+                    let mp3buf = channels > 1 
+                        ? mp3encoder.encodeBuffer(leftChunk, rightChunk)
+                        : mp3encoder.encodeBuffer(leftChunk);
+                    if (mp3buf.length > 0) mp3Data.push(mp3buf);
+                }
+                currentIndex = end;
+                conversionProgress = currentIndex / totalSamples;
+                statusText = `ENCODING [MP3]: ${Math.floor(conversionProgress * 100)}% (MPEG LAYER III CODEC)...`;
+
+                if (currentIndex < totalSamples) {
+                    setTimeout(processChunk, 4); // Yield execution back to browser UI thread
+                } else {
+                    const flushed = mp3encoder.flush();
+                    if (flushed.length > 0) mp3Data.push(flushed);
+                    triggerDownload(new Blob(mp3Data, { type: 'audio/mp3' }), 'converted_output.mp3');
+                }
+            }
+
+            setTimeout(processChunk, 4);
+        }
+
+        // --- ASYNC NON-BLOCKING WAV PCM ENCODER ---
+        function encodeWavAsync(buffer) {
+            const numOfChan = buffer.numberOfChannels;
+            const sampleRate = buffer.sampleRate;
+            const format = 1;
+            const bitDepth = 16;
+
+            let result = numOfChan === 2 
+                ? interleave(buffer.getChannelData(0), buffer.getChannelData(1))
+                : buffer.getChannelData(0);
+
+            const totalSamples = result.length;
+            const dataLength = totalSamples * (bitDepth / 8);
+            const bufferArray = new ArrayBuffer(44 + dataLength);
+            const view = new DataView(bufferArray);
+
+            function writeString(view, offset, string) {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            }
+
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + dataLength, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, format, true);
+            view.setUint16(22, numOfChan, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * numOfChan * (bitDepth / 8), true);
+            view.setUint16(32, numOfChan * (bitDepth / 8), true);
+            view.setUint16(34, bitDepth, true);
+            writeString(view, 36, 'data');
+            view.setUint32(40, dataLength, true);
+
+            let currentIndex = 0;
+            const chunkSize = 100000; // Large chunks since WAV memory copying is very fast
+            const offsetStart = 44;
+
+            function processWavChunk() {
+                const end = Math.min(currentIndex + chunkSize, totalSamples);
+                for (let i = currentIndex; i < end; i++) {
+                    let s = Math.max(-1, Math.min(1, result[i]));
+                    view.setInt16(offsetStart + (i * 2), s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+                }
+                currentIndex = end;
+                conversionProgress = currentIndex / totalSamples;
+                statusText = `ENCODING [WAV]: ${Math.floor(conversionProgress * 100)}% (UNCOMPRESSED PCM)...`;
+
+                if (currentIndex < totalSamples) {
+                    setTimeout(processWavChunk, 4);
+                } else {
+                    triggerDownload(new Blob([view], { type: 'audio/wav' }), 'converted_output.wav');
+                }
+            }
+
+            setTimeout(processWavChunk, 4);
+        }
+
+        function interleave(inputL, inputR) {
+            const length = inputL.length + inputR.length;
+            const result = new Float32Array(length);
+            let index = 0;
+            for (let i = 0; i < inputL.length; i++) {
+                result[index++] = inputL[i];
+                result[index++] = inputR[i];
+            }
+            return result;
+        }
+
+        // --- AUTHENTIC MEDIARECORDER STREAM ENCODER (WEBM / OGG) ---
+        function encodeViaMediaRecorder(buffer, targetFormat) {
+            let mimeType = targetFormat === 'ogg' ? 'audio/ogg; codecs=opus' : 'audio/webm; codecs=opus';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'audio/webm';
+            }
+
+            const streamDest = audioCtx.createMediaStreamDestination();
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(streamDest);
+            
+            const recorder = new MediaRecorder(streamDest.stream, { mimeType: mimeType });
+            const chunks = [];
+            
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunks.push(e.data);
+            };
+            
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: mimeType });
+                const ext = targetFormat === 'ogg' ? 'ogg' : 'webm';
+                triggerDownload(blob, `converted_output.${ext}`);
+            };
+            
+            recorder.start();
+            source.start(0);
+            
+            source.onended = () => {
+                recorder.stop();
+            };
+        }
+
         // --- MASTER CANVAS RENDER LOOP (60 FPS) ---
         function render() {
+            // Calculate live stream progress for WebM/Ogg MediaRecorder
+            if (isConverting && (selectedFormat === 'webm' || selectedFormat === 'ogg') && decodedBuffer) {
+                const elapsed = audioCtx.currentTime - conversionStartTime;
+                conversionProgress = Math.min(0.99, elapsed / decodedBuffer.duration);
+                statusText = `ENCODING [${selectedFormat.toUpperCase()}]: ${Math.floor(conversionProgress * 100)}% (REAL-TIME STREAM)...`;
+            }
+
             updateAndRenderBackground();
 
             const cx = UI.cx;
@@ -382,17 +560,17 @@
 
             ctx.fillStyle = '#ffffff';
             ctx.font = 'bold 20px "Courier New", Courier, monospace';
-            ctx.fillText("SUPER CONVERTER // MK-V", cx + 24, cy + 38);
+            ctx.fillText("SUPER CONVERTER // MK-VI", cx + 24, cy + 38);
             ctx.fillStyle = '#00ffcc';
             ctx.font = 'bold 11px "Courier New", Courier, monospace';
-            ctx.fillText("[ TRUE ENCODING ENGINE // LAME.JS MPEG CODEC // 90° SHARP ]", cx + 24, cy + 54);
+            ctx.fillText("[ ASYNC CODECS // LIVE PROGRESS GAUGE // 90° SHARP ]", cx + 24, cy + 54);
 
             ctx.strokeStyle = '#4a515d';
             ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(cx + 24, cy + 62); ctx.lineTo(cx + UI.chassis.w - 24, cy + 62); ctx.stroke();
 
             const dz = UI.dropZone;
-            const dzHover = hitTest(dz);
+            const dzHover = hitTest(dz) && !isConverting;
             ctx.fillStyle = dzHover ? '#1a1e24' : '#111418';
             ctx.fillRect(dz.x, dz.y, dz.w, dz.h);
             
@@ -500,7 +678,7 @@
             ctx.fillText("TARGET STREAM:", cx + 36, cy + 435);
 
             const dd = UI.dropdownMain;
-            const ddHover = hitTest(dd);
+            const ddHover = hitTest(dd) && !isConverting;
             ctx.fillStyle = ddHover ? '#15181c' : '#0d0f11';
             ctx.fillRect(dd.x, dd.y, dd.w, dd.h);
             ctx.strokeStyle = ddHover || dropdownOpen ? '#00ffcc' : '#4a515d';
@@ -519,8 +697,24 @@
             drawMetalButton(UI.btnStop);
             drawMetalButton(UI.btnExport);
 
+            // --- STATUS BAR WITH REAL-TIME PROGRESS GAUGE ---
             ctx.fillStyle = '#121417';
             ctx.fillRect(cx + 24, cy + 540, 772, 38);
+            
+            // Draw Glowing Progress Fill when actively converting
+            if (isConverting && conversionProgress > 0) {
+                const fillWidth = Math.min(772, 772 * conversionProgress);
+                ctx.fillStyle = 'rgba(0, 255, 204, 0.2)';
+                ctx.fillRect(cx + 24, cy + 540, fillWidth, 38);
+                
+                // Leading Cyan Tip Line
+                ctx.fillStyle = '#00ffcc';
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = '#00ffcc';
+                ctx.fillRect(cx + 24 + fillWidth - 2, cy + 540, 2, 38);
+                ctx.shadowBlur = 0;
+            }
+
             ctx.strokeStyle = '#2d3239';
             ctx.strokeRect(cx + 24, cy + 540, 772, 38);
             ctx.fillStyle = '#00ffcc';
@@ -551,10 +745,14 @@
         }
 
         function drawMetalButton(btn) {
-            const hover = hitTest(btn);
+            const hover = hitTest(btn) && !isConverting;
             const btnGrad = ctx.createLinearGradient(btn.x, btn.y, btn.x, btn.y + btn.h);
             
-            if (btn.primary) {
+            if (isConverting) {
+                // Dimmed Lockout State
+                btnGrad.addColorStop(0, '#1c1f24');
+                btnGrad.addColorStop(1, '#121518');
+            } else if (btn.primary) {
                 btnGrad.addColorStop(0, hover ? '#2e4d54' : '#243d42');
                 btnGrad.addColorStop(1, hover ? '#1c2e32' : '#142225');
             } else {
@@ -565,150 +763,18 @@
             ctx.fillStyle = btnGrad;
             ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
 
-            ctx.strokeStyle = hover ? '#00ffcc' : (btn.primary ? '#3b646c' : '#687280');
+            ctx.strokeStyle = isConverting ? '#2d3239' : (hover ? '#00ffcc' : (btn.primary ? '#3b646c' : '#687280'));
             ctx.lineWidth = 1;
             ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
 
-            ctx.fillStyle = btn.primary ? '#00ffcc' : '#15181b';
+            ctx.fillStyle = isConverting ? '#2d3239' : (btn.primary ? '#00ffcc' : '#15181b');
             ctx.fillRect(btn.x, btn.y + btn.h - 3, btn.w, 3);
 
-            ctx.fillStyle = btn.primary || hover ? '#00ffcc' : '#ffffff';
+            ctx.fillStyle = isConverting ? '#5a626f' : (btn.primary || hover ? '#00ffcc' : '#ffffff');
             ctx.font = 'bold 13px "Courier New", Courier, monospace';
             ctx.textAlign = 'center';
             ctx.fillText(btn.label, btn.x + (btn.w / 2), btn.y + 28);
             ctx.textAlign = 'left';
-        }
-
-        // --- AUTHENTIC LAME.JS MP3 MATHEMATICAL ENCODER ---
-        function bufferToMp3(buffer) {
-            if (typeof lamejs === 'undefined') {
-                statusText = "ERROR: LAME.JS CODEC UNREACHABLE. CHECK INTERNET CONNECTION.";
-                return null;
-            }
-            const channels = buffer.numberOfChannels;
-            const sampleRate = buffer.sampleRate;
-            const kbps = 192; // High-fidelity 192kbps output
-            const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, kbps);
-            const sampleBlockSize = 1152;
-            const mp3Data = [];
-
-            const left = buffer.getChannelData(0);
-            const right = channels > 1 ? buffer.getChannelData(1) : left;
-
-            const leftPcm = new Int16Array(left.length);
-            const rightPcm = new Int16Array(right.length);
-
-            // Downsample 32-bit float PCM (-1.0 to 1.0) into 16-bit signed integer PCM (-32768 to 32767)
-            for (let i = 0; i < left.length; i++) {
-                let sL = Math.max(-1, Math.min(1, left[i]));
-                leftPcm[i] = sL < 0 ? sL * 0x8000 : sL * 0x7FFF;
-                if (channels > 1) {
-                    let sR = Math.max(-1, Math.min(1, right[i]));
-                    rightPcm[i] = sR < 0 ? sR * 0x8000 : sR * 0x7FFF;
-                }
-            }
-
-            for (let i = 0; i < leftPcm.length; i += sampleBlockSize) {
-                const leftChunk = leftPcm.subarray(i, i + sampleBlockSize);
-                const rightChunk = channels > 1 ? rightPcm.subarray(i, i + sampleBlockSize) : leftChunk;
-                let mp3buf = channels > 1 
-                    ? mp3encoder.encodeBuffer(leftChunk, rightChunk)
-                    : mp3encoder.encodeBuffer(leftChunk);
-                if (mp3buf.length > 0) mp3Data.push(mp3buf);
-            }
-            const flushed = mp3encoder.flush();
-            if (flushed.length > 0) mp3Data.push(flushed);
-
-            return new Blob(mp3Data, { type: 'audio/mp3' });
-        }
-
-        // --- AUTHENTIC MEDIARECORDER STREAM ENCODER (WEBM / OGG) ---
-        function encodeViaMediaRecorder(buffer, targetFormat) {
-            let mimeType = targetFormat === 'ogg' ? 'audio/ogg; codecs=opus' : 'audio/webm; codecs=opus';
-            if (!MediaRecorder.isTypeSupported(mimeType)) {
-                mimeType = 'audio/webm'; // Fallback to universal WebM if OS lacks native Ogg container support
-            }
-
-            const streamDest = audioCtx.createMediaStreamDestination();
-            const source = audioCtx.createBufferSource();
-            source.buffer = buffer;
-            source.connect(streamDest);
-            
-            const recorder = new MediaRecorder(streamDest.stream, { mimeType: mimeType });
-            const chunks = [];
-            
-            recorder.ondataavailable = (e) => {
-                if (e.data.size > 0) chunks.push(e.data);
-            };
-            
-            recorder.onstop = () => {
-                const blob = new Blob(chunks, { type: mimeType });
-                const ext = targetFormat === 'ogg' ? 'ogg' : 'webm';
-                triggerDownload(blob, `converted_output.${ext}`);
-            };
-            
-            statusText = `TARGET (${targetFormat.toUpperCase()}): CAPTURING REAL-TIME STREAM ENCODING...`;
-            recorder.start();
-            source.start(0);
-            
-            source.onended = () => {
-                recorder.stop();
-            };
-        }
-
-        // --- AUTHENTIC UNCOMPRESSED PCM WAV ENCODER ---
-        function bufferToWav(buffer) {
-            const numOfChan = buffer.numberOfChannels;
-            const sampleRate = buffer.sampleRate;
-            const format = 1;
-            const bitDepth = 16;
-
-            let result = numOfChan === 2 
-                ? interleave(buffer.getChannelData(0), buffer.getChannelData(1))
-                : buffer.getChannelData(0);
-
-            const dataLength = result.length * (bitDepth / 8);
-            const bufferArray = new ArrayBuffer(44 + dataLength);
-            const view = new DataView(bufferArray);
-
-            function writeString(view, offset, string) {
-                for (let i = 0; i < string.length; i++) {
-                    view.setUint8(offset + i, string.charCodeAt(i));
-                }
-            }
-
-            writeString(view, 0, 'RIFF');
-            view.setUint32(4, 36 + dataLength, true);
-            writeString(view, 8, 'WAVE');
-            writeString(view, 12, 'fmt ');
-            view.setUint32(16, 16, true);
-            view.setUint16(20, format, true);
-            view.setUint16(22, numOfChan, true);
-            view.setUint32(24, sampleRate, true);
-            view.setUint32(28, sampleRate * numOfChan * (bitDepth / 8), true);
-            view.setUint16(32, numOfChan * (bitDepth / 8), true);
-            view.setUint16(34, bitDepth, true);
-            writeString(view, 36, 'data');
-            view.setUint32(40, dataLength, true);
-
-            const offset = 44;
-            for (let i = 0; i < result.length; i++) {
-                let s = Math.max(-1, Math.min(1, result[i]));
-                view.setInt16(offset + (i * 2), s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-            }
-
-            return new Blob([view], { type: 'audio/wav' });
-        }
-
-        function interleave(inputL, inputR) {
-            const length = inputL.length + inputR.length;
-            const result = new Float32Array(length);
-            let index = 0;
-            for (let i = 0; i < inputL.length; i++) {
-                result[index++] = inputL[i];
-                result[index++] = inputR[i];
-            }
-            return result;
         }
 
         // Initiate 60 FPS Render Loop
