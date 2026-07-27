@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SUPER CONVERTER // MK-V TRUE ENCODER ENGINE</title>
+    <!-- Authentic LAME.js MPEG Layer III Mathematical Codec Engine -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+    <style>
+        /* Absolute reset: Zero CSS styling or DOM layout elements */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #040507;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- The entire application renders inside this single canvas primitive -->
+    <canvas id="stage"></canvas>
+    
+    <!-- Hidden OS File Bridge -->
+    <input type="file" id="fileBridge" accept="audio/*,video/*" style="display: none;">
+
+    <script>
+        /**
+         * PURE CANVAS AUDIO ENGINE // MK-V
+         * True MP3 (LAME.js) // True WAV/WEBM/OGG // Dynamic Industrial Matrix // 90° Sharp UI
+         */
+        const canvas = document.getElementById('stage');
+        const ctx = canvas.getContext('2d');
+        const fileBridge = document.getElementById('fileBridge');
+
+        // Web Audio API & Pipeline State
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let decodedBuffer = null;
+        let activeSource = null;
+        let isPlaying = false;
+        let playbackStartTime = 0;
+
+        // UI & System State
+        let mouseX = 0;
+        let mouseY = 0;
+        let statusText = "SYSTEM READY // AWAITING SOURCE INPUT...";
+        let fileName = "-";
+        let fileType = "-";
+        let fileSampleRate = "-";
+        let fileDuration = "-";
+
+        // Custom Canvas Dropdown State
+        let dropdownOpen = false;
+        let selectedFormat = 'wav';
+        const formatOptions = [
+            { id: 'wav', label: 'WAV // UNCOMPRESSED PCM 16-BIT' },
+            { id: 'mp3', label: 'MP3 // TRUE MPEG LAYER III (LAME ENGINE)' },
+            { id: 'webm', label: 'WEBM // OPUS WEB AUDIO CONTAINER' },
+            { id: 'ogg', label: 'OGG // VORBIS / OPUS STREAM CONTAINER' }
+        ];
+
+        // --- DYNAMIC BACKGROUND ENGINE (MK-V) ---
+        const GRID_SIZE = 40;
+        const traces = [];
+        const pulseTiles = [];
+        const particles = [];
+
+        function initBackground() {
+            traces.length = 0;
+            pulseTiles.length = 0;
+            particles.length = 0;
+
+            for (let i = 0; i < 15; i++) {
+                traces.push(createTrace());
+            }
+            for (let i = 0; i < 35; i++) {
+                particles.push({
+                    x: Math.random() * window.innerWidth,
+                    y: Math.random() * window.innerHeight,
+                    size: Math.floor(Math.random() * 2) + 2,
+                    speedY: -(Math.random() * 0.5 + 0.2),
+                    speedX: (Math.random() - 0.5) * 0.2,
+                    alpha: Math.random() * 0.4 + 0.1
+                });
+            }
+        }
+
+        function createTrace() {
+            const isHoriz = Math.random() > 0.5;
+            const cols = Math.floor(window.innerWidth / GRID_SIZE);
+            const rows = Math.floor(window.innerHeight / GRID_SIZE);
+            return {
+                x: Math.floor(Math.random() * cols) * GRID_SIZE,
+                y: Math.floor(Math.random() * rows) * GRID_SIZE,
+                dx: isHoriz ? (Math.random() > 0.5 ? 4 : -4) : 0,
+                dy: !isHoriz ? (Math.random() > 0.5 ? 4 : -4) : 0,
+                length: Math.floor(Math.random() * 60) + 40,
+                color: Math.random() > 0.3 ? '#00ffcc' : '#1e383f'
+            };
+        }
+
+        function updateAndRenderBackground() {
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.fillStyle = '#050608';
+            ctx.fillRect(0, 0, w, h);
+
+            if (Math.random() < 0.1) {
+                const cols = Math.floor(w / GRID_SIZE);
+                const rows = Math.floor(h / GRID_SIZE);
+                pulseTiles.push({
+                    x: Math.floor(Math.random() * cols) * GRID_SIZE,
+                    y: Math.floor(Math.random() * rows) * GRID_SIZE,
+                    alpha: 0.25
+                });
+            }
+
+            for (let i = pulseTiles.length - 1; i >= 0; i--) {
+                const pt = pulseTiles[i];
+                ctx.fillStyle = `rgba(0, 255, 204, ${pt.alpha})`;
+                ctx.fillRect(pt.x + 1, pt.y + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+                pt.alpha -= 0.005;
+                if (pt.alpha <= 0) pulseTiles.splice(i, 1);
+            }
+
+            ctx.lineWidth = 1;
+            for (let x = 0; x < w; x += GRID_SIZE) {
+                const isMajor = x % (GRID_SIZE * 5) === 0;
+                ctx.strokeStyle = isMajor ? '#141820' : '#0a0d12';
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+            }
+            for (let y = 0; y < h; y += GRID_SIZE) {
+                const isMajor = y % (GRID_SIZE * 5) === 0;
+                ctx.strokeStyle = isMajor ? '#141820' : '#0a0d12';
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+            }
+
+            ctx.strokeStyle = '#222936';
+            ctx.lineWidth = 2;
+            for (let x = 0; x < w; x += GRID_SIZE * 5) {
+                for (let y = 0; y < h; y += GRID_SIZE * 5) {
+                    ctx.beginPath();
+                    ctx.moveTo(x - 5, y); ctx.lineTo(x + 5, y);
+                    ctx.moveTo(x, y - 5); ctx.lineTo(x, y + 5);
+                    ctx.stroke();
+                }
+            }
+
+            traces.forEach((t, idx) => {
+                t.x += t.dx;
+                t.y += t.dy;
+
+                ctx.strokeStyle = t.color;
+                ctx.lineWidth = 2;
+                ctx.shadowBlur = t.color === '#00ffcc' ? 8 : 0;
+                ctx.shadowColor = '#00ffcc';
+                ctx.beginPath();
+                ctx.moveTo(t.x, t.y);
+                if (t.dx !== 0) ctx.lineTo(t.x - (t.length * Math.sign(t.dx)), t.y);
+                if (t.dy !== 0) ctx.lineTo(t.x, t.y - (t.length * Math.sign(t.dy)));
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                if (t.x % GRID_SIZE === 0 && t.y % GRID_SIZE === 0) {
+                    if (Math.random() < 0.25) {
+                        const wasHoriz = t.dx !== 0;
+                        t.dx = wasHoriz ? 0 : (Math.random() > 0.5 ? 4 : -4);
+                        t.dy = !wasHoriz ? 0 : (Math.random() > 0.5 ? 4 : -4);
+                    }
+                }
+                if (t.x < -100 || t.x > w + 100 || t.y < -100 || t.y > h + 100) {
+                    traces[idx] = createTrace();
+                }
+            });
+
+            particles.forEach(p => {
+                p.x += p.speedX;
+                p.y += p.speedY;
+                if (p.y < -10) { p.y = h + 10; p.x = Math.random() * w; }
+                if (p.x < -10) p.x = w + 10;
+                if (p.x > w + 10) p.x = -10;
+
+                ctx.fillStyle = `rgba(0, 255, 204, ${p.alpha})`;
+                ctx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
+            });
+
+            const vigGrad = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.4, w / 2, h / 2, Math.max(w, h) * 0.7);
+            vigGrad.addColorStop(0, 'rgba(4, 5, 7, 0)');
+            vigGrad.addColorStop(1, 'rgba(4, 5, 7, 0.85)');
+            ctx.fillStyle = vigGrad;
+            ctx.fillRect(0, 0, w, h);
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initBackground();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // UI Interactive Hitbox Definitions
+        const UI = {
+            chassis: { w: 820, h: 660 },
+            get cx() { return Math.max(20, (canvas.width - this.chassis.w) / 2); },
+            get cy() { return Math.max(20, (canvas.height - this.chassis.h) / 2); },
+            
+            get dropZone() { return { x: this.cx + 24, y: this.cy + 70, w: 772, h: 90 }; },
+            get waveform() { return { x: this.cx + 24, y: this.cy + 250, w: 772, h: 140 }; },
+            get dropdownMain() { return { x: this.cx + 180, y: this.cy + 410, w: 616, h: 42 }; },
+            
+            get btnPlay() { return { x: this.cx + 24, y: this.cy + 475, w: 246, h: 48, label: 'PREVIEW STREAM' }; },
+            get btnStop() { return { x: this.cx + 286, y: this.cy + 475, w: 246, h: 48, label: 'HALT PLAYBACK' }; },
+            get btnExport() { return { x: this.cx + 548, y: this.cy + 475, w: 248, h: 48, label: 'EXECUTE CONVERSION', primary: true }; }
+        };
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+            
+            let hover = false;
+            if (hitTest(UI.dropZone) || hitTest(UI.btnPlay) || hitTest(UI.btnStop) || hitTest(UI.btnExport) || hitTest(UI.dropdownMain)) {
+                hover = true;
+            }
+            if (dropdownOpen) {
+                formatOptions.forEach((_, idx) => {
+                    if (hitTest({ x: UI.dropdownMain.x, y: UI.dropdownMain.y + 42 + (idx * 42), w: UI.dropdownMain.w, h: 42 })) hover = true;
+                });
+            }
+            canvas.style.cursor = hover ? 'pointer' : 'default';
+        });
+
+        canvas.addEventListener('mousedown', () => {
+            if (dropdownOpen) {
+                let optionClicked = false;
+                formatOptions.forEach((opt, idx) => {
+                    const box = { x: UI.dropdownMain.x, y: UI.dropdownMain.y + 42 + (idx * 42), w: UI.dropdownMain.w, h: 42 };
+                    if (hitTest(box)) {
+                        selectedFormat = opt.id;
+                        dropdownOpen = false;
+                        optionClicked = true;
+                    }
+                });
+                if (optionClicked) return;
+                dropdownOpen = false;
+                return;
+            }
+
+            if (hitTest(UI.dropdownMain)) { dropdownOpen = true; return; }
+            if (hitTest(UI.dropZone)) { fileBridge.click(); return; }
+            if (hitTest(UI.btnPlay) && decodedBuffer) { startPlayback(); return; }
+            if (hitTest(UI.btnStop) && activeSource) { stopPlayback(); return; }
+            if (hitTest(UI.btnExport) && decodedBuffer) { executeConversion(); return; }
+        });
+
+        function hitTest(box) {
+            return mouseX >= box.x && mouseX <= box.x + box.w && mouseY >= box.y && mouseY <= box.y + box.h;
+        }
+
+        window.addEventListener('dragover', (e) => e.preventDefault());
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileBridge.addEventListener('change', (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+        async function handleFile(file) {
+            statusText = `READING CONTAINER: ${file.name.toUpperCase()}...`;
+            fileName = file.name.toUpperCase();
+            fileType = file.type || 'RAW / BINARY';
+            stopPlayback();
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                statusText = 'DECODING AUDIO STREAM VIA BROWSER ENGINE...';
+                decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                
+                fileSampleRate = `${decodedBuffer.sampleRate} HZ`;
+                fileDuration = `${decodedBuffer.numberOfChannels} CH // ${decodedBuffer.duration.toFixed(2)}s`;
+                statusText = 'DECODING COMPLETE // READY FOR PIPELINE PROCESSING.';
+            } catch (err) {
+                console.error(err);
+                statusText = 'ERROR: UNSUPPORTED OR CORRUPTED CONTAINER STREAM.';
+            }
+        }
+
+        function startPlayback() {
+            if (activeSource) activeSource.stop();
+            activeSource = audioCtx.createBufferSource();
+            activeSource.buffer = decodedBuffer;
+            activeSource.connect(audioCtx.destination);
+            activeSource.start(0);
+            isPlaying = true;
+            playbackStartTime = audioCtx.currentTime;
+            statusText = 'PREVIEWING AUDIO STREAM...';
+
+            activeSource.onended = () => {
+                isPlaying = false;
+                statusText = 'STREAM PREVIEW FINISHED.';
+            };
+        }
+
+        function stopPlayback() {
+            if (activeSource) {
+                activeSource.stop();
+                isPlaying = false;
+                statusText = 'PLAYBACK HALTED.';
+            }
+        }
+
+        // --- AUTHENTIC AUDIO ENVERSION EXECUTION ---
+        function executeConversion() {
+            stopPlayback(); // Halt preview to free up processing resources
+            
+            if (selectedFormat === 'wav') {
+                statusText = 'RENDERING UNCOMPRESSED PCM WAV STREAM...';
+                setTimeout(() => {
+                    const wavBlob = bufferToWav(decodedBuffer);
+                    triggerDownload(wavBlob, 'converted_output.wav');
+                }, 50);
+            } 
+            else if (selectedFormat === 'mp3') {
+                statusText = 'ENCODING TRUE MPEG LAYER III MP3 VIA LAME ENGINE...';
+                setTimeout(() => {
+                    const mp3Blob = bufferToMp3(decodedBuffer);
+                    if (mp3Blob) triggerDownload(mp3Blob, 'converted_output.mp3');
+                }, 50);
+            } 
+            else if (selectedFormat === 'webm' || selectedFormat === 'ogg') {
+                encodeViaMediaRecorder(decodedBuffer, selectedFormat);
+            }
+        }
+
+        function triggerDownload(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                statusText = `EXPORT COMPLETE: GENUINE ${filename.toUpperCase()} GENERATED.`;
+            }, 100);
+        }
+
+        // --- MASTER CANVAS RENDER LOOP (60 FPS) ---
+        function render() {
+            updateAndRenderBackground();
+
+            const cx = UI.cx;
+            const cy = UI.cy;
+
+            const chassisGrad = ctx.createLinearGradient(cx, cy, cx + UI.chassis.w, cy + UI.chassis.h);
+            chassisGrad.addColorStop(0, '#363d45');
+            chassisGrad.addColorStop(0.5, '#1e2227');
+            chassisGrad.addColorStop(1, '#292e35');
+            
+            ctx.fillStyle = chassisGrad;
+            ctx.fillRect(cx, cy, UI.chassis.w, UI.chassis.h);
+            
+            ctx.strokeStyle = '#5a626f';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(cx, cy, UI.chassis.w, UI.chassis.h);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(cx - 2, cy - 2, UI.chassis.w + 4, UI.chassis.h + 4);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 20px "Courier New", Courier, monospace';
+            ctx.fillText("SUPER CONVERTER // MK-V", cx + 24, cy + 38);
+            ctx.fillStyle = '#00ffcc';
+            ctx.font = 'bold 11px "Courier New", Courier, monospace';
+            ctx.fillText("[ TRUE ENCODING ENGINE // LAME.JS MPEG CODEC // 90° SHARP ]", cx + 24, cy + 54);
+
+            ctx.strokeStyle = '#4a515d';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(cx + 24, cy + 62); ctx.lineTo(cx + UI.chassis.w - 24, cy + 62); ctx.stroke();
+
+            const dz = UI.dropZone;
+            const dzHover = hitTest(dz);
+            ctx.fillStyle = dzHover ? '#1a1e24' : '#111418';
+            ctx.fillRect(dz.x, dz.y, dz.w, dz.h);
+            
+            ctx.strokeStyle = dzHover ? '#00ffcc' : '#5a626f';
+            ctx.lineWidth = dzHover ? 2 : 1.5;
+            ctx.setLineDash([6, 6]);
+            ctx.strokeRect(dz.x, dz.y, dz.w, dz.h);
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = dzHover ? '#00ffcc' : '#cfd5de';
+            ctx.font = 'bold 14px "Courier New", Courier, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText("DROP ANY AUDIO / VIDEO CONTAINER HERE", dz.x + (dz.w / 2), dz.y + 40);
+            ctx.fillStyle = '#788394';
+            ctx.font = '11px "Courier New", Courier, monospace';
+            ctx.fillText("MP3 // WAV // OGG // FLAC // WEBM // MP4  [ OR CLICK TO BROWSE ]", dz.x + (dz.w / 2), dz.y + 62);
+            ctx.textAlign = 'left';
+
+            const metaBoxes = [
+                { label: 'SOURCE FILE', val: fileName, x: cx + 24, y: cy + 172, w: 380, h: 32, color: '#fff' },
+                { label: 'FORMAT / CONTAINER', val: fileType, x: cx + 414, y: cy + 172, w: 382, h: 32, color: '#fff' },
+                { label: 'SAMPLE RATE', val: fileSampleRate, x: cx + 24, y: cy + 210, w: 380, h: 32, color: '#00ffcc' },
+                { label: 'CHANNELS / DURATION', val: fileDuration, x: cx + 414, y: cy + 210, w: 382, h: 32, color: '#00ffcc' }
+            ];
+
+            metaBoxes.forEach(mb => {
+                const mbGrad = ctx.createLinearGradient(mb.x, mb.y, mb.x, mb.y + mb.h);
+                mbGrad.addColorStop(0, '#1a1d21'); mbGrad.addColorStop(1, '#121417');
+                ctx.fillStyle = mbGrad;
+                ctx.fillRect(mb.x, mb.y, mb.w, mb.h);
+                ctx.strokeStyle = '#2d3239';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(mb.x, mb.y, mb.w, mb.h);
+                
+                ctx.fillStyle = '#5a626f';
+                ctx.fillRect(mb.x, mb.y, 3, mb.h);
+
+                ctx.fillStyle = '#788394';
+                ctx.font = '10px "Courier New", Courier, monospace';
+                ctx.fillText(mb.label, mb.x + 10, mb.y + 14);
+                ctx.fillStyle = mb.color;
+                ctx.font = 'bold 12px "Courier New", Courier, monospace';
+                ctx.fillText(mb.val.length > 38 ? mb.val.substring(0, 35) + '...' : mb.val, mb.x + 10, mb.y + 26);
+            });
+
+            const wf = UI.waveform;
+            ctx.fillStyle = '#0a0b0d';
+            ctx.fillRect(wf.x, wf.y, wf.w, wf.h);
+            ctx.strokeStyle = '#2d3239';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(wf.x, wf.y, wf.w, wf.h);
+
+            ctx.strokeStyle = '#1a1e24';
+            ctx.beginPath(); ctx.moveTo(wf.x, wf.y + (wf.h / 2)); ctx.lineTo(wf.x + wf.w, wf.y + (wf.h / 2)); ctx.stroke();
+
+            if (decodedBuffer) {
+                const rawData = decodedBuffer.getChannelData(0);
+                const step = Math.ceil(rawData.length / wf.w);
+                const amp = wf.h / 2;
+
+                ctx.save();
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = '#00ffcc';
+                ctx.strokeStyle = '#00ffcc';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+
+                for (let i = 0; i < wf.w; i++) {
+                    let min = 1.0; let max = -1.0;
+                    for (let j = 0; j < step; j++) {
+                        const datum = rawData[(i * step) + j];
+                        if (datum < min) min = datum;
+                        if (datum > max) max = datum;
+                    }
+                    ctx.moveTo(wf.x + i, wf.y + ((1 + min) * amp));
+                    ctx.lineTo(wf.x + i, wf.y + ((1 + max) * amp));
+                }
+                ctx.stroke();
+                ctx.restore();
+
+                if (isPlaying) {
+                    const elapsed = audioCtx.currentTime - playbackStartTime;
+                    const progress = (elapsed % decodedBuffer.duration) / decodedBuffer.duration;
+                    const playheadX = wf.x + (progress * wf.w);
+
+                    ctx.save();
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = '#ff0055';
+                    ctx.strokeStyle = '#ff0055';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(playheadX, wf.y);
+                    ctx.lineTo(playheadX, wf.y + wf.h);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            ctx.fillStyle = '#181b1f';
+            ctx.fillRect(cx + 24, cy + 410, 146, 42);
+            ctx.strokeStyle = '#2d3239';
+            ctx.strokeRect(cx + 24, cy + 410, 146, 42);
+            ctx.fillStyle = '#a0aab8';
+            ctx.font = 'bold 12px "Courier New", Courier, monospace';
+            ctx.fillText("TARGET STREAM:", cx + 36, cy + 435);
+
+            const dd = UI.dropdownMain;
+            const ddHover = hitTest(dd);
+            ctx.fillStyle = ddHover ? '#15181c' : '#0d0f11';
+            ctx.fillRect(dd.x, dd.y, dd.w, dd.h);
+            ctx.strokeStyle = ddHover || dropdownOpen ? '#00ffcc' : '#4a515d';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(dd.x, dd.y, dd.w, dd.h);
+
+            const currentOpt = formatOptions.find(o => o.id === selectedFormat);
+            ctx.fillStyle = '#00ffcc';
+            ctx.font = 'bold 13px "Courier New", Courier, monospace';
+            ctx.fillText(currentOpt ? currentOpt.label : selectedFormat, dd.x + 16, dd.y + 26);
+            
+            ctx.fillStyle = ddHover || dropdownOpen ? '#00ffcc' : '#788394';
+            ctx.fillText(dropdownOpen ? "[ ▲ ]" : "[ ▼ ]", dd.x + dd.w - 48, dd.y + 26);
+
+            drawMetalButton(UI.btnPlay);
+            drawMetalButton(UI.btnStop);
+            drawMetalButton(UI.btnExport);
+
+            ctx.fillStyle = '#121417';
+            ctx.fillRect(cx + 24, cy + 540, 772, 38);
+            ctx.strokeStyle = '#2d3239';
+            ctx.strokeRect(cx + 24, cy + 540, 772, 38);
+            ctx.fillStyle = '#00ffcc';
+            ctx.fillRect(cx + 24, cy + 540, 4, 38);
+
+            ctx.font = 'bold 12px "Courier New", Courier, monospace';
+            ctx.fillText(statusText, cx + 40, cy + 564);
+
+            if (dropdownOpen) {
+                formatOptions.forEach((opt, idx) => {
+                    const optBox = { x: dd.x, y: dd.y + 42 + (idx * 42), w: dd.w, h: 42 };
+                    const optHover = hitTest(optBox);
+
+                    ctx.fillStyle = optHover ? '#1a2228' : '#0d0f11';
+                    ctx.fillRect(optBox.x, optBox.y, optBox.w, optBox.h);
+                    
+                    ctx.strokeStyle = optHover ? '#00ffcc' : '#3e454f';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(optBox.x, optBox.y, optBox.w, optBox.h);
+
+                    ctx.fillStyle = optHover || selectedFormat === opt.id ? '#00ffcc' : '#cfd5de';
+                    ctx.font = 'bold 12px "Courier New", Courier, monospace';
+                    ctx.fillText((selectedFormat === opt.id ? "► " : "  ") + opt.label, optBox.x + 16, optBox.y + 26);
+                });
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        function drawMetalButton(btn) {
+            const hover = hitTest(btn);
+            const btnGrad = ctx.createLinearGradient(btn.x, btn.y, btn.x, btn.y + btn.h);
+            
+            if (btn.primary) {
+                btnGrad.addColorStop(0, hover ? '#2e4d54' : '#243d42');
+                btnGrad.addColorStop(1, hover ? '#1c2e32' : '#142225');
+            } else {
+                btnGrad.addColorStop(0, hover ? '#545c68' : '#464d57');
+                btnGrad.addColorStop(1, hover ? '#353b44' : '#2b3037');
+            }
+
+            ctx.fillStyle = btnGrad;
+            ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+
+            ctx.strokeStyle = hover ? '#00ffcc' : (btn.primary ? '#3b646c' : '#687280');
+            ctx.lineWidth = 1;
+            ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+
+            ctx.fillStyle = btn.primary ? '#00ffcc' : '#15181b';
+            ctx.fillRect(btn.x, btn.y + btn.h - 3, btn.w, 3);
+
+            ctx.fillStyle = btn.primary || hover ? '#00ffcc' : '#ffffff';
+            ctx.font = 'bold 13px "Courier New", Courier, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(btn.label, btn.x + (btn.w / 2), btn.y + 28);
+            ctx.textAlign = 'left';
+        }
+
+        // --- AUTHENTIC LAME.JS MP3 MATHEMATICAL ENCODER ---
+        function bufferToMp3(buffer) {
+            if (typeof lamejs === 'undefined') {
+                statusText = "ERROR: LAME.JS CODEC UNREACHABLE. CHECK INTERNET CONNECTION.";
+                return null;
+            }
+            const channels = buffer.numberOfChannels;
+            const sampleRate = buffer.sampleRate;
+            const kbps = 192; // High-fidelity 192kbps output
+            const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, kbps);
+            const sampleBlockSize = 1152;
+            const mp3Data = [];
+
+            const left = buffer.getChannelData(0);
+            const right = channels > 1 ? buffer.getChannelData(1) : left;
+
+            const leftPcm = new Int16Array(left.length);
+            const rightPcm = new Int16Array(right.length);
+
+            // Downsample 32-bit float PCM (-1.0 to 1.0) into 16-bit signed integer PCM (-32768 to 32767)
+            for (let i = 0; i < left.length; i++) {
+                let sL = Math.max(-1, Math.min(1, left[i]));
+                leftPcm[i] = sL < 0 ? sL * 0x8000 : sL * 0x7FFF;
+                if (channels > 1) {
+                    let sR = Math.max(-1, Math.min(1, right[i]));
+                    rightPcm[i] = sR < 0 ? sR * 0x8000 : sR * 0x7FFF;
+                }
+            }
+
+            for (let i = 0; i < leftPcm.length; i += sampleBlockSize) {
+                const leftChunk = leftPcm.subarray(i, i + sampleBlockSize);
+                const rightChunk = channels > 1 ? rightPcm.subarray(i, i + sampleBlockSize) : leftChunk;
+                let mp3buf = channels > 1 
+                    ? mp3encoder.encodeBuffer(leftChunk, rightChunk)
+                    : mp3encoder.encodeBuffer(leftChunk);
+                if (mp3buf.length > 0) mp3Data.push(mp3buf);
+            }
+            const flushed = mp3encoder.flush();
+            if (flushed.length > 0) mp3Data.push(flushed);
+
+            return new Blob(mp3Data, { type: 'audio/mp3' });
+        }
+
+        // --- AUTHENTIC MEDIARECORDER STREAM ENCODER (WEBM / OGG) ---
+        function encodeViaMediaRecorder(buffer, targetFormat) {
+            let mimeType = targetFormat === 'ogg' ? 'audio/ogg; codecs=opus' : 'audio/webm; codecs=opus';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'audio/webm'; // Fallback to universal WebM if OS lacks native Ogg container support
+            }
+
+            const streamDest = audioCtx.createMediaStreamDestination();
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(streamDest);
+            
+            const recorder = new MediaRecorder(streamDest.stream, { mimeType: mimeType });
+            const chunks = [];
+            
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunks.push(e.data);
+            };
+            
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: mimeType });
+                const ext = targetFormat === 'ogg' ? 'ogg' : 'webm';
+                triggerDownload(blob, `converted_output.${ext}`);
+            };
+            
+            statusText = `TARGET (${targetFormat.toUpperCase()}): CAPTURING REAL-TIME STREAM ENCODING...`;
+            recorder.start();
+            source.start(0);
+            
+            source.onended = () => {
+                recorder.stop();
+            };
+        }
+
+        // --- AUTHENTIC UNCOMPRESSED PCM WAV ENCODER ---
+        function bufferToWav(buffer) {
+            const numOfChan = buffer.numberOfChannels;
+            const sampleRate = buffer.sampleRate;
+            const format = 1;
+            const bitDepth = 16;
+
+            let result = numOfChan === 2 
+                ? interleave(buffer.getChannelData(0), buffer.getChannelData(1))
+                : buffer.getChannelData(0);
+
+            const dataLength = result.length * (bitDepth / 8);
+            const bufferArray = new ArrayBuffer(44 + dataLength);
+            const view = new DataView(bufferArray);
+
+            function writeString(view, offset, string) {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            }
+
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + dataLength, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, format, true);
+            view.setUint16(22, numOfChan, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * numOfChan * (bitDepth / 8), true);
+            view.setUint16(32, numOfChan * (bitDepth / 8), true);
+            view.setUint16(34, bitDepth, true);
+            writeString(view, 36, 'data');
+            view.setUint32(40, dataLength, true);
+
+            const offset = 44;
+            for (let i = 0; i < result.length; i++) {
+                let s = Math.max(-1, Math.min(1, result[i]));
+                view.setInt16(offset + (i * 2), s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            }
+
+            return new Blob([view], { type: 'audio/wav' });
+        }
+
+        function interleave(inputL, inputR) {
+            const length = inputL.length + inputR.length;
+            const result = new Float32Array(length);
+            let index = 0;
+            for (let i = 0; i < inputL.length; i++) {
+                result[index++] = inputL[i];
+                result[index++] = inputR[i];
+            }
+            return result;
+        }
+
+        // Initiate 60 FPS Render Loop
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>
